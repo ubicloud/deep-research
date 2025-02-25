@@ -1,0 +1,6 @@
+beautifulsoup4
+duckduckgo-search
+markdown-pdf
+openai
+requests
+PyPDF2
