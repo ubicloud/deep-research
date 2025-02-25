@@ -206,7 +206,7 @@ def gather_information(topic: str, state: ResearchState) -> ResearchState:
                 "title": raw_search_result.get("title", "No Title"),
                 "href": url,
                 "summary": summary,
-                "index": len(search_results)
+                "index": len(search_results) + 1
             })
     logger.debug(str(fetch_url.cache_info()))
     updated_state: ResearchState = {
