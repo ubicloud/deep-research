@@ -14,6 +14,7 @@ import openai
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from duckduckgo_search import DDGS
+from tavily import TavilyClient
 from markdown_pdf import MarkdownPdf, Section
 import PyPDF2
 
@@ -23,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 # Load UBICLOUD_API_KEY from .env file
 load_dotenv()
-INFERENCE_API_KEY = os.getenv("UBICLOUD_API_KEY")
+UBICLOUD_API_KEY = os.getenv("UBICLOUD_API_KEY")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 # Model configurations
 SUMMARIZATION_MODEL = "mistral-small-3"
@@ -46,10 +48,19 @@ class InferenceMode(Enum):
 
 
 @functools.lru_cache(maxsize=128)
+def get_search_client(search_engine: str):
+    if search_engine == "duckduckgo":
+        return DDGS()
+    elif search_engine == "tavily":
+        return TavilyClient(TAVILY_API_KEY)
+    raise Exception("Unsupported search engine")
+
+
+@functools.lru_cache(maxsize=128)
 def get_inference_client(model: str) -> openai.OpenAI:
     """Get the inference client for the specified model."""
     base_url = f"https://{model}.ai.ubicloud.com/v1/"
-    return openai.OpenAI(api_key=INFERENCE_API_KEY, base_url=base_url)
+    return openai.OpenAI(api_key=UBICLOUD_API_KEY, base_url=base_url)
 
 
 def extract_json(content: str) -> Optional[Dict[str, Any]]:
@@ -80,9 +91,8 @@ def inference(messages: List[Dict[str, str]], mode: InferenceMode) -> Any:
     )
     content = completion.choices[0].message.content
     logger.debug(content)
-    # Remove any <think>...</think> sections from the content
-    content = re.sub(r'<think>.*?</think>', '',
-                     content, flags=re.DOTALL).strip()
+    # Remove everything before the </think> from the content
+    content = re.sub(r'.*?</think>', '', content, flags=re.DOTALL).strip()
     if mode == InferenceMode.JSON:
         return extract_json(content)
     return content
@@ -106,11 +116,15 @@ def create_user_message(content: Any) -> Dict[str, str]:
 
 
 @functools.lru_cache(maxsize=128)
-def search(query: str) -> List[Dict[str, Any]]:
-    """Search for a query using DuckDuckGo and return the top results."""
+def search(query: str, search_engine: str) -> List[Dict[str, Any]]:
+    """Search for a query on the web and return the top results."""
     truncated_query = query[:200]
     logger.info(f"Searching for \"{truncated_query}\"")
-    search_results = DDGS().text(truncated_query, max_results=5)
+    client = get_search_client(search_engine)
+    if search_engine == "duckduckgo":
+        search_results = client.text(truncated_query, max_results=5)
+    elif search_engine == "tavily":
+        search_results = client.search(query=truncated_query)["results"]
     logger.debug(json.dumps(search_results, indent=2))
     return search_results
 
@@ -178,9 +192,9 @@ Be succinct. Summarize directly, don't repeat the title."""),
 def fetch_and_summarize(topic: str, search_result: Dict[str, Any]) -> Optional[str]:
     """Fetch and summarize content from a search result URL."""
     title = search_result.get("title", "No Title")
-    url = search_result.get("href")
+    url = search_result.get("url")
     logger.info(
-        f"Reading \"{title}\" using {InferenceMode.SUMMARIZATION.get_model()}")
+        f"Reading \"{title}\" with {InferenceMode.SUMMARIZATION.get_model()}")
     content = fetch_url(url)
     if not content:
         logger.warning(f"No content fetched from URL: {url}")
@@ -188,15 +202,17 @@ def fetch_and_summarize(topic: str, search_result: Dict[str, Any]) -> Optional[s
     return summarize(title, content)
 
 
-def gather_information(topic: str, state: ResearchState) -> ResearchState:
+def gather_information(topic: str, state: ResearchState, search_engine: str) -> ResearchState:
     """Gather and update research information about a topic."""
     logger.info(f"Gathering information about \"{topic}\"")
-    raw_search_results = search(topic)
+    raw_search_results = search(topic, search_engine)
     search_results: List[Dict[str, Any]] = state.get("search_results", [])
     visited: List[str] = state.get("_visited", [])
 
     for raw_search_result in raw_search_results:
-        url = raw_search_result.get("href")
+        # Some search engine stores the url as href. We copy href to url.
+        url = raw_search_result.get("href") or raw_search_result.get("url")
+        raw_search_result["url"] = url
         if url in visited:
             continue
         visited.append(url)
@@ -204,7 +220,7 @@ def gather_information(topic: str, state: ResearchState) -> ResearchState:
         if summary:
             search_results.append({
                 "title": raw_search_result.get("title", "No Title"),
-                "href": url,
+                "url": url,
                 "summary": summary,
                 "index": len(search_results) + 1
             })
@@ -235,7 +251,7 @@ Use information from the search results as needed. Be objective, reasonable, and
     return {**state, "thinking": thinking}
 
 
-def deep_dive(state: ResearchState) -> ResearchState:
+def deep_dive(state: ResearchState, search_engine: str) -> ResearchState:
     """Deep dive into a few areas."""
     subtopics = inference([
         create_system_message("""
@@ -249,9 +265,9 @@ Each string should be a well-structured search engine query."""),
     ], InferenceMode.JSON)
     if subtopics is None:
         logger.warning("No JSON object found. Retrying deep_dive...")
-        return deep_dive(state)
+        return deep_dive(state, search_engine)
     for subtopic in subtopics:
-        state = gather_information(subtopic, state)
+        state = gather_information(subtopic, state, search_engine)
     return state
 
 
@@ -324,16 +340,16 @@ def save_state_json(topic: str, state: dict, timestamp: str) -> None:
     logger.info(f"Saved state JSON: {filename}")
 
 
-def deep_research(topic: str, depth: int = 3, initial_state: Optional[dict] = None) -> None:
+def deep_research(topic: str, depth: int, search_engine: str, initial_state: Optional[dict]) -> None:
     """Conduct deep research on a given topic and generate a PDF report"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     state = initial_state or {}
     state["topic"] = topic
-    state = gather_information(topic, state)
+    state = gather_information(topic, state, search_engine)
     state = thinking(state)
     save_state_json(topic, state, timestamp)
     for _ in range(depth - 1):
-        state = deep_dive(state)
+        state = deep_dive(state, search_engine)
         state = thinking(state)
         save_state_json(topic, state, timestamp)
     state = create_outline(state)
@@ -352,6 +368,8 @@ def main() -> None:
                         help="The depth of the research")
     parser.add_argument("--resume", type=str,
                         help="Path to a JSON file to resume state from")
+    parser.add_argument("--search_engine", type=str, default="duckduckgo",
+                        help="The search engine to use, either DuckDuckGo or Tavily.")
     args = parser.parse_args()
 
     initial_state: Optional[dict] = None
@@ -364,7 +382,7 @@ def main() -> None:
             logger.error(
                 f"Failed to load resume state from {args.resume}: {e}")
 
-    deep_research(args.topic, args.depth, initial_state)
+    deep_research(args.topic, args.depth, args.search_engine, initial_state)
 
 
 if __name__ == "__main__":

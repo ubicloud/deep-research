@@ -1,6 +1,8 @@
 beautifulsoup4
+dotenv
 duckduckgo-search
 markdown-pdf
 openai
 requests
+tavily-python
 PyPDF2

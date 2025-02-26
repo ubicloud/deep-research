@@ -34,6 +34,14 @@ Resume from saved state:
 python deep_research.py "Artificial Intelligence" --resume="saved_state.json"
 ```
 
+Use Tavily search instead of DuckDuckGo:
+
+Add `TAVILY_API_KEY=your_api_key_here` to the `.env` file, then run
+
+```bash
+python deep_research.py "Artificial Intelligence" --resume="saved_state.json"
+```
+
 ## Output
 
 - **PDF Report**: Structured report with summary and references.
