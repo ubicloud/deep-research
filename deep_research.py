@@ -300,10 +300,16 @@ Use search results as needed.
 Ensure it is well-organized and each section is well-developed.
 Use subsections and lists as needed.
 Include the topic as the title. Include an executive summary at the beginning.
-Include all search results as references at the end. Include "Ubicloud AI" as the author at the end.
+Refer to search results by their index as needed. Do not include the list of references at the end.
+Use heading level 1 for the title.
 Do not include figures."""),
         create_user_message(state)
     ], InferenceMode.WRITING)
+    references = [
+        f"1. {result["title"]}. (n.d.). Retrieved from {result['url']}"
+        for result in state["search_results"]]
+    report += "\n\n## References\n\n" + \
+        "\n".join(references) + "\n\nUbicloud AI"
     return {**state, "report": report}
 
 
