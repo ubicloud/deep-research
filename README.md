@@ -24,6 +24,8 @@ Create a `.env` file and add:
 UBICLOUD_API_KEY=your_api_key_here
 ```
 
+You can obtain an API key by signing up on [Ubicloud](https://www.ubicloud.com) and generating one from the "AI Inference" page.
+
 ## Usage
 
 Run research:
@@ -32,7 +34,7 @@ Run research:
 python dewey.py "Artificial Intelligence"
 ```
 
-Set research depth:
+Set research depth (default is 3):
 
 ```bash
 python dewey.py "Quantum Computing" --depth=2
@@ -44,12 +46,12 @@ Resume from saved state:
 python dewey.py "Artificial Intelligence" --resume="saved_state.json"
 ```
 
-Use Tavily search instead of DuckDuckGo:
-
-Add `TAVILY_API_KEY=your_api_key_here` to the `.env` file, then run
+By default, we use DuckDuckGo as the search engine, but it may encounter rate limits.
+To avoid this, you can switch to Tavily search.
+To do so, register at [tavily.com](https://tavily.com) to obtain an API key, then add `TAVILY_API_KEY=your_api_key_here` to the `.env` file, and run
 
 ```bash
-python dewey.py "Artificial Intelligence" --resume="saved_state.json"
+python dewey.py "Artificial Intelligence" --search_engine="tavily"
 ```
 
 ## Output
