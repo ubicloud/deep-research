@@ -244,8 +244,10 @@ def thinking(state: ResearchState) -> ResearchState:
     state.pop("report", None)
     thinking = inference([
         create_system_message("""
-Take a deep breath, go through the search results, think through the topic step by step, and provide a well-reasoned answer.
-Use information from the search results as needed. Be objective, reasonable, and comprehensive."""),
+Take a deep breath, go through the search results, think about the topic step by step, and provide a well-reasoned answer.
+Use information from the search results as needed. Ignore unrelated search results.
+If data is unavailable, analyze the problem step by step using existing information. Make reasonable assumptions, develop well-informed estimates, and cross-verify results through multiple approaches whenever possible.
+Be objective, reasonable, and comprehensive."""),
         create_user_message(state)
     ], mode=InferenceMode.REASONING)
     return {**state, "thinking": thinking}
@@ -281,7 +283,7 @@ def create_outline(state: ResearchState) -> ResearchState:
     outline = inference([
         create_system_message("""
 Generate an outline of a professional report on the given topic and thinking.
-Think step by step. Use search results as needed."""),
+Think step by step. Use search results as needed. Ignore unrelated search results."""),
         create_user_message(state)
     ], InferenceMode.REASONING)
     return {**state, "outline": outline}
@@ -296,7 +298,7 @@ def write_report(state: ResearchState) -> ResearchState:
     report = inference([
         create_system_message(
             """Generate an extremely detailed professional report based on the provided topic, thinking, and outline.
-Use search results as needed.
+Use search results as needed. Ignore unrelated search results.
 Ensure it is well-organized and each section is well-developed.
 Use subsections and lists as needed.
 Include the topic as the title. Include an executive summary at the beginning.
