@@ -2,7 +2,7 @@
 
 Deep Research is an AI-powered solution that automates multi-step research processes, mimicking the work of a seasoned research analyst.
 In this repo, we demonstrate how to build Dewey, your own deep research agent, using only open source.
-This way, you can see how it works under the hook, customize the process based on your own needs, and deploy it on your own infrastructure.
+This way, you can see how it works under the hood, customize the process based on your own needs, and deploy it on your own infrastructure.
 
 To give you a sense of the style and quality of Dewey, here are a few sample reports it has generated:
 
