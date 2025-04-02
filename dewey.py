@@ -94,7 +94,11 @@ def inference(messages: List[Dict[str, str]], mode: InferenceMode) -> Any:
     # Remove everything before the </think> from the content
     content = re.sub(r'.*?</think>', '', content, flags=re.DOTALL).strip()
     if mode == InferenceMode.JSON:
-        return extract_json(content)
+        json_content = extract_json(content)
+        if not json_content:
+            logger.warning("No JSON object found. Retrying...")
+            return inference(messages, mode)
+        return json_content
     return content
 
 
@@ -320,8 +324,8 @@ body { font-family: sans-serif; line-height: 1.5; margin: 1em; color: #333; }
 h1, h2, h3 { color: #2c3e50; margin: 1em 0 0.5em; }
 h1 { font-size: 2em; border-bottom: 1px solid #ccc; padding-bottom: 0.2em; }
 p { margin: 0.8em 0; }
-code, pre code { font-family: monospace; background: #f4f4f4; padding: 0.2em 0.4em; border-radius: 3px; }
-pre code { background: #2d2d2d; color: #fff; padding: 1em; overflow-x: auto; }
+code, pre code { font-family: monospace; background: #f4f4f4; padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.8em; color: #333; }
+pre code { color: #333; padding: 1em; white-space: pre-wrap; word-break: break-word; }
 blockquote { border-left: 4px solid #ddd; padding-left: 1em; color: #666; margin: 1em 0; }
 ul, ol { margin: 0.8em 0; padding-left: 1.2em; }
 table { width: 100%; border-collapse: collapse; margin: 1em 0; }
@@ -330,40 +334,58 @@ th { background: #f9f9f9; }
 """
 
 
-def save_pdf(topic: str, report: str, timestamp: str) -> None:
+def save_pdf(topic: str, report: str, filename: str) -> None:
     """Save the generated report as a PDF file with a custom CSS style."""
     pdf = MarkdownPdf(toc_level=2)
     pdf.add_section(Section(report), user_css=CUSTOM_MARKDOWN_PDF_CSS)
-    pdf.meta["title"] = topic
-    filename = f"{topic}_{timestamp}.pdf"
-    pdf.save(filename)
-    logger.info(f"Saved PDF: {filename}")
+    full_filename = f"{filename}.pdf"
+    pdf.save(full_filename)
+    logger.info(f"Saved PDF: {full_filename}")
 
 
-def save_state_json(topic: str, state: dict, timestamp: str) -> None:
+def save_state_json(topic: str, state: dict, filename: str) -> None:
     """Save the research state as a JSON file."""
-    filename = f"{topic}_{timestamp}.json"
-    with open(filename, "w", encoding="utf-8") as f:
+    full_filename = f"{filename}.json"
+    with open(full_filename, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
-    logger.info(f"Saved state JSON: {filename}")
+    logger.info(f"Saved state JSON: {full_filename}")
+
+
+def get_filename(topic: str) -> str:
+    """Generate a filename based on the topic and timestamp."""
+    logger.info(
+        f"Creating a filename of the report with {InferenceMode.JSON.get_model()}"
+    )
+    basename = inference([
+        create_system_message("""
+Create a concise file name of lower case alphanumeric characters and underscore for the given topic.
+Do not include extension. Return as a raw json string. Do not include any fields. Do include triple backtick."""),
+        create_user_message(topic)
+    ], InferenceMode.JSON)
+    if not re.fullmatch(r'[a-z0-9_]+', basename):
+        return get_filename(topic)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{basename}_{timestamp}"
 
 
 def deep_research(topic: str, depth: int, search_engine: str, initial_state: Optional[dict]) -> None:
     """Conduct deep research on a given topic and generate a PDF report"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = get_filename(topic)
     state = initial_state or {}
     state["topic"] = topic
+    state["search_results"] = []
+    save_state_json(topic, state, filename)
     state = gather_information(topic, state, search_engine)
     state = thinking(state)
-    save_state_json(topic, state, timestamp)
-    for _ in range(depth - 1):
+    save_state_json(topic, state, filename)
+    for _ in range(depth):
         state = deep_dive(state, search_engine)
         state = thinking(state)
-        save_state_json(topic, state, timestamp)
+        save_state_json(topic, state, filename)
     state = create_outline(state)
     state = write_report(state)
-    save_pdf(topic, state["report"], timestamp)
-    save_state_json(topic, state, timestamp)
+    save_pdf(topic, state["report"], filename)
+    save_state_json(topic, state, filename)
 
 
 def main() -> None:
