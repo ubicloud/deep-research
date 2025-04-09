@@ -312,7 +312,7 @@ Do not include figures."""),
         create_user_message(state)
     ], InferenceMode.WRITING)
     references = [
-        f"1. {result["title"]}. (n.d.). Retrieved from {result['url']}"
+        f"1. {result['title']}. (n.d.). Retrieved from {result['url']}"
         for result in state["search_results"]]
     report += "\n\n## References\n\n" + \
         "\n".join(references) + "\n\nUbicloud AI"
